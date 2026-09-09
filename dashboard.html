@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>SRISHTI-DRISHTI · Watershed Analysis</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ink: #16211c;
+    --ink-panel: #1d2b24;
+    --moss: #7fb08a;
+    --moss-bright: #a3d4ae;
+    --teal: #5b9aa6;
+    --amber: #d9a86c;
+    --cream: #f2efe6;
+    --cream-dim: #b9c2ba;
+    --line: rgba(242,239,230,0.1);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: 'Inter', sans-serif;
+    background: var(--ink);
+    color: var(--cream);
+    overflow: hidden;
+  }
+  h1, h2, h3, .display { font-family: 'Space Grotesk', sans-serif; }
+
+  #map { position: absolute; inset: 0; z-index: 0; }
+  .leaflet-tile-pane { filter: saturate(0.85) brightness(0.9); }
+
+  header {
+    position: absolute; top: 0; left: 0; right: 0; z-index: 500;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 18px 28px;
+    background: linear-gradient(to bottom, rgba(22,33,28,0.95), rgba(22,33,28,0));
+    pointer-events: none;
+  }
+  header .brand { display: flex; align-items: baseline; gap: 10px; pointer-events: auto; }
+  header .brand h1 { font-size: 19px; font-weight: 600; margin: 0; letter-spacing: 0.2px; }
+  header .brand span { font-size: 12px; color: var(--cream-dim); }
+  header .tag {
+    pointer-events: auto;
+    font-size: 12px; color: var(--moss-bright);
+    border: 1px solid rgba(127,176,138,0.35);
+    padding: 5px 12px; border-radius: 20px;
+    background: rgba(127,176,138,0.08);
+  }
+
+  #panel {
+    position: absolute; top: 78px; left: 20px; z-index: 500;
+    width: 300px;
+    background: var(--ink-panel);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 18px;
+    box-shadow: 0 20px 50px rgba(0,0,0,0.45);
+  }
+  #panel h3 { font-size: 13px; font-weight: 500; margin: 0 0 14px; color: var(--cream-dim); }
+  .field { margin-bottom: 12px; }
+  .field label { display: block; font-size: 11px; color: var(--cream-dim); margin-bottom: 4px; }
+  .field-row { display: flex; gap: 8px; }
+  .field-row .field { flex: 1; margin-bottom: 0; }
+  input {
+    width: 100%; background: rgba(0,0,0,0.25); border: 1px solid var(--line);
+    color: var(--cream); padding: 8px 10px; border-radius: 8px; font-size: 13px;
+    font-family: 'Inter', sans-serif;
+  }
+  input:focus { outline: none; border-color: var(--moss); }
+  .hint { font-size: 10.5px; color: var(--cream-dim); margin-top: 10px; line-height: 1.5; }
+
+  button#analyzeBtn {
+    width: 100%; margin-top: 6px;
+    background: var(--moss); color: #10190f; border: none;
+    padding: 11px; border-radius: 8px; font-size: 13.5px; font-weight: 600;
+    cursor: pointer; font-family: 'Inter', sans-serif;
+    transition: background 0.15s ease;
+  }
+  button#analyzeBtn:hover { background: var(--moss-bright); }
+  button#analyzeBtn:disabled { background: #3a463d; color: var(--cream-dim); cursor: wait; }
+
+  .layer-toggle { display: flex; gap: 8px; margin-top: 12px; }
+  .layer-toggle button {
+    flex: 1; padding: 7px; font-size: 11.5px; border-radius: 7px;
+    border: 1px solid var(--line); background: transparent; color: var(--cream-dim);
+    cursor: pointer; font-family: 'Inter', sans-serif;
+  }
+  .layer-toggle button.active.ndvi { background: rgba(127,176,138,0.18); border-color: var(--moss); color: var(--moss-bright); }
+  .layer-toggle button.active.ndwi { background: rgba(91,154,166,0.18); border-color: var(--teal); color: #a9d6dd; }
+
+  #results {
+    position: absolute; top: 78px; right: 20px; z-index: 500;
+    width: 260px;
+    background: var(--ink-panel);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 18px;
+    box-shadow: 0 20px 50px rgba(0,0,0,0.45);
+    display: none;
+  }
+  #results h3 { font-size: 13px; font-weight: 500; margin: 0 0 14px; color: var(--cream-dim); }
+  .stat { display: flex; justify-content: space-between; align-items: baseline; padding: 9px 0; border-bottom: 1px solid var(--line); }
+  .stat:last-child { border-bottom: none; }
+  .stat .label { font-size: 12px; color: var(--cream-dim); }
+  .stat .value { font-size: 14px; font-weight: 600; }
+  .badge { padding: 2px 9px; border-radius: 20px; font-size: 11px; font-weight: 600; }
+  .badge.Low { background: rgba(217,168,108,0.18); color: var(--amber); }
+  .badge.Moderate { background: rgba(127,176,138,0.18); color: var(--moss-bright); }
+  .badge.High { background: rgba(91,154,166,0.2); color: #a9d6dd; }
+  .badge.Unknown { background: rgba(255,255,255,0.08); color: var(--cream-dim); }
+
+  #status {
+    position: absolute; bottom: 24px; left: 50%; transform: translateX(-50%);
+    z-index: 500; font-size: 12.5px; color: var(--cream-dim);
+    background: rgba(29,43,36,0.9); border: 1px solid var(--line);
+    padding: 9px 16px; border-radius: 20px; display: none;
+  }
+  #status.error { color: #e39a9a; border-color: rgba(227,154,154,0.35); }
+
+  .leaflet-popup-content-wrapper { background: var(--ink-panel); color: var(--cream); border-radius: 10px; }
+  .leaflet-popup-tip { background: var(--ink-panel); }
+  .leaflet-popup-content { font-family: 'Inter', sans-serif; font-size: 12.5px; }
+</style>
+</head>
+<body>
+
+<div id="map"></div>
+
+<header>
+  <div class="brand">
+    <h1>SRISHTI · DRISHTI</h1>
+    <span>Watershed geospatial analysis</span>
+  </div>
+  <div class="tag">Click the map to select a site</div>
+</header>
+
+<div id="panel">
+  <h3>Analysis window</h3>
+  <div class="field-row">
+    <div class="field"><label>Start date</label><input id="start" value="2026-06-01" /></div>
+    <div class="field"><label>End date</label><input id="end" value="2026-09-01" /></div>
+  </div>
+  <div class="field"><label>Radius (meters)</label><input id="radius" value="5000" /></div>
+  <div class="field"><label>Selected site</label><input id="coords" value="17.2403, 78.4294" readonly /></div>
+  <button id="analyzeBtn" onclick="runAnalysis()">Run analysis</button>
+  <div class="layer-toggle">
+    <button class="ndvi active" onclick="toggleLayer('ndvi')">NDVI</button>
+    <button class="ndwi" onclick="toggleLayer('ndwi')">NDWI</button>
+  </div>
+  <div class="hint">Click anywhere on the map to move the site, then run analysis. Vegetation (NDVI) and surface-water/moisture (NDWI) layers are pulled live from Sentinel-2.</div>
+</div>
+
+<div id="results">
+  <h3>Site readout</h3>
+  <div class="stat"><span class="label">Sentinel-2 scenes used</span><span class="value" id="r-count">—</span></div>
+  <div class="stat"><span class="label">NDVI (mean)</span><span class="value" id="r-ndvi">—</span></div>
+  <div class="stat"><span class="label">Vegetation</span><span class="value"><span class="badge" id="r-veg-badge">—</span></span></div>
+  <div class="stat"><span class="label">NDWI (mean)</span><span class="value" id="r-ndwi">—</span></div>
+  <div class="stat"><span class="label">Water / moisture</span><span class="value"><span class="badge" id="r-water-badge">—</span></span></div>
+</div>
+
+<div id="status"></div>
+
+<script>
+  const API_URL = "http://127.0.0.1:8000/analyze";
+
+  const map = L.map('map', { zoomControl: false }).setView([17.2403, 78.4294], 12);
+  L.control.zoom({ position: 'bottomright' }).addTo(map);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; OpenStreetMap contributors'
+  }).addTo(map);
+
+  let siteMarker = L.marker([17.2403, 78.4294]).addTo(map);
+  let ndviLayer = null, ndwiLayer = null, activeLayer = 'ndvi';
+  let selected = { lat: 17.2403, lon: 78.4294 };
+
+  map.on('click', (e) => {
+    selected = { lat: e.latlng.lat, lon: e.latlng.lng };
+    siteMarker.setLatLng(e.latlng);
+    document.getElementById('coords').value = `${selected.lat.toFixed(4)}, ${selected.lon.toFixed(4)}`;
+  });
+
+  function toggleLayer(which) {
+    activeLayer = which;
+    document.querySelectorAll('.layer-toggle button').forEach(b => b.classList.remove('active'));
+    document.querySelector(`.layer-toggle .${which}`).classList.add('active');
+    if (ndviLayer) map.removeLayer(ndviLayer);
+    if (ndwiLayer) map.removeLayer(ndwiLayer);
+    if (which === 'ndvi' && ndviLayer) ndviLayer.addTo(map);
+    if (which === 'ndwi' && ndwiLayer) ndwiLayer.addTo(map);
+  }
+
+  function setStatus(msg, isError) {
+    const el = document.getElementById('status');
+    el.textContent = msg;
+    el.style.display = msg ? 'block' : 'none';
+    el.classList.toggle('error', !!isError);
+  }
+
+  async function runAnalysis() {
+    const btn = document.getElementById('analyzeBtn');
+    btn.disabled = true;
+    btn.textContent = 'Analyzing…';
+    setStatus('Querying Sentinel-2 imagery over the selected site…', false);
+    document.getElementById('results').style.display = 'none';
+
+    const payload = {
+      latitude: selected.lat,
+      longitude: selected.lon,
+      start_date: document.getElementById('start').value,
+      end_date: document.getElementById('end').value,
+      radius_meters: parseInt(document.getElementById('radius').value) || 5000
+    };
+
+    try {
+      const res = await fetch(API_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        setStatus(err.detail || `Request failed (${res.status})`, true);
+        return;
+      }
+
+      const data = await res.json();
+
+      if (ndviLayer) map.removeLayer(ndviLayer);
+      if (ndwiLayer) map.removeLayer(ndwiLayer);
+      ndviLayer = L.tileLayer(data.ndvi.tile_url, { opacity: 0.72 });
+      ndwiLayer = L.tileLayer(data.ndwi.tile_url, { opacity: 0.72 });
+      toggleLayer(activeLayer);
+
+      document.getElementById('r-count').textContent = data.image_count;
+      document.getElementById('r-ndvi').textContent = data.analysis.ndvi_mean ?? '—';
+      document.getElementById('r-ndwi').textContent = data.analysis.ndwi_mean ?? '—';
+
+      const vegBadge = document.getElementById('r-veg-badge');
+      vegBadge.textContent = data.analysis.vegetation;
+      vegBadge.className = 'badge ' + data.analysis.vegetation;
+
+      const waterBadge = document.getElementById('r-water-badge');
+      waterBadge.textContent = data.analysis.water_moisture;
+      waterBadge.className = 'badge ' + data.analysis.water_moisture;
+
+      document.getElementById('results').style.display = 'block';
+      setStatus('', false);
+
+    } catch (e) {
+      setStatus(`Can't reach the backend at ${API_URL} — is uvicorn running?`, true);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Run analysis';
+    }
+  }
+</script>
+
+</body>
+</html>

@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>SIH26015 Backend Test</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+  <style>
+    body { font-family: sans-serif; margin: 0; }
+    #controls { padding: 12px; background: #222; color: #fff; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    #controls input { padding: 4px; }
+    #map { height: 85vh; width: 100%; }
+    #status { padding: 4px 12px; color: #ffb347; }
+  </style>
+</head>
+<body>
+  <div id="controls">
+    <label>Lat <input id="lat" value="17.2403" size="8" /></label>
+    <label>Lon <input id="lon" value="78.4294" size="8" /></label>
+    <label>Start <input id="start" value="2026-06-01" size="10" /></label>
+    <label>End <input id="end" value="2026-09-01" size="10" /></label>
+    <label>Radius (m) <input id="radius" value="5000" size="6" /></label>
+    <button onclick="runAnalysis()">Analyze</button>
+  </div>
+  <div id="status"></div>
+  <div id="map"></div>
+
+  <script>
+    const map = L.map('map').setView([17.2403, 78.4294], 12);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
+
+    let ndviLayer, ndwiLayer;
+    const API_URL = "http://127.0.0.1:8000/analyze";
+
+    async function runAnalysis() {
+      const status = document.getElementById('status');
+      status.textContent = "Running analysis...";
+
+      const payload = {
+        latitude: parseFloat(document.getElementById('lat').value),
+        longitude: parseFloat(document.getElementById('lon').value),
+        start_date: document.getElementById('start').value,
+        end_date: document.getElementById('end').value,
+        radius_meters: parseInt(document.getElementById('radius').value)
+      };
+
+      try {
+        const res = await fetch(API_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+
+        if (!res.ok) {
+          const err = await res.json();
+          status.textContent = "Error: " + (err.detail || res.statusText);
+          return;
+        }
+
+        const data = await res.json();
+
+        if (ndviLayer) map.removeLayer(ndviLayer);
+        if (ndwiLayer) map.removeLayer(ndwiLayer);
+
+        ndviLayer = L.tileLayer(data.ndvi.tile_url, { opacity: 0.6 }).addTo(map);
+        ndwiLayer = L.tileLayer(data.ndwi.tile_url, { opacity: 0 }); // toggle manually if wanted
+
+        map.setView([payload.latitude, payload.longitude], 13);
+
+        status.textContent =
+          `images: ${data.image_count} | vegetation: ${data.analysis.vegetation} (NDVI ${data.analysis.ndvi_mean}) | ` +
+          `water/moisture: ${data.analysis.water_moisture} (NDWI ${data.analysis.ndwi_mean})`;
+
+      } catch (e) {
+        status.textContent = "Request failed: " + e.message + " (is the backend running on port 8000?)";
+      }
+    }
+  </script>
+</body>
+</html>
